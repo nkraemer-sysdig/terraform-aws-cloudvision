@@ -1,8 +1,3 @@
-provider "sysdig" {
-  sysdig_secure_url       = var.sysdig_secure_endpoint
-  sysdig_secure_api_token = var.sysdig_secure_api_token
-}
-
 #-------------------------------------
 # resources deployed always in master account
 # with default provider
@@ -82,13 +77,23 @@ module "cloud_connector" {
   depends_on = [module.cloudtrail, module.ecs_fargate_cluster, module.ssm]
 }
 
-module "cloud_bench" {
-  providers = {
-    aws = aws.cloudvision
-  }
-  source = "./modules/services/cloud-bench"
 
-  account_id = var.organizational_config.cloudvision_member_account_id
+data "aws_caller_identity" "me" {}
+data "aws_organizations_organization" "example" {}
+
+locals {
+  cloudbench_accounts = var.is_organizational ? toset(data.aws_organizations_organization.example.accounts[*].id) : toset([data.aws_caller_identity.me.account_id])
+}
+
+module "cloud_bench" {
+  source = "./modules/services/cloud-bench"
+  for_each = local.cloudbench_accounts
+
+  is_organizational         = var.is_organizational
+  organizational_account_id = data.aws_caller_identity.me.account_id
+
+  account_id = each.value
+  region     = var.region
   tags       = var.tags
 }
 
